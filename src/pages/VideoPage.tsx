@@ -174,9 +174,6 @@ export function VideoPage() {
               </>
             )}
           </Button>
-          <p className="text-center text-xl text-foreground">
-            Tambien podes <strong>mantener apretado</strong> el video <br /> y guardarlo en tus fotos
-          </p>
         </>
       )}
     </div>
