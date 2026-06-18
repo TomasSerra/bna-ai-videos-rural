@@ -11,34 +11,11 @@ const LOGO_SRC = '/logo-bna.png';
 // the MP4 visibly freezes before the animation starts. Match the preview skip.
 const TRIM_START_SECONDS = 0.7;
 
-async function descargarVideo(falUrl: string) {
-  const resp = await fetch(falUrl);
-  if (!resp.ok) throw new Error(`No pude descargar el video (${resp.status}).`);
-  const rawBlob = await resp.blob();
-  const blob = await trimVideoStart(rawBlob, TRIM_START_SECONDS);
-
-  const filename = `bna-campo-argentina-${Date.now()}.mp4`;
-  const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
-
-  // iOS Safari: Web Share API opens the native share sheet → "Guardar en Fotos".
-  // Android / desktop: fallback to <a download>.
-  const nav = navigator as Navigator & {
-    canShare?: (data: { files: File[] }) => boolean;
-    share?: (data: { files: File[]; title?: string }) => Promise<void>;
-  };
-  if (nav.canShare?.({ files: [file] }) && nav.share) {
-    try {
-      await nav.share({ files: [file], title: 'Mi video de Campo' });
-      return;
-    } catch {
-      // User cancelled the share sheet — fall through to direct download.
-    }
-  }
-
-  const url = URL.createObjectURL(blob);
+function fallbackDownload(file: File) {
+  const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = file.name;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -48,6 +25,10 @@ async function descargarVideo(falUrl: string) {
 export function VideoPage() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // iOS Safari drops the user-gesture context across `await`, so we prepare
+  // the File eagerly on mount — the click handler then calls navigator.share
+  // synchronously and the share sheet actually opens.
+  const [downloadFile, setDownloadFile] = useState<File | null>(null);
   const [downloading, setDownloading] = useState(false);
   const hasRunRef = useRef(false);
 
@@ -66,19 +47,52 @@ export function VideoPage() {
       return;
     }
     setVideoUrl(u);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(u);
+        if (!resp.ok) throw new Error(`No pude descargar el video (${resp.status}).`);
+        const rawBlob = await resp.blob();
+        const trimmed = await trimVideoStart(rawBlob, TRIM_START_SECONDS);
+        if (cancelled) return;
+        const filename = `bna-campo-argentina-${Date.now()}.mp4`;
+        setDownloadFile(new File([trimmed], filename, { type: trimmed.type || 'video/mp4' }));
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : 'No pude preparar el video.';
+        setErrorMsg(msg);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleDownload = async () => {
-    if (!videoUrl) return;
+  const handleDownload = () => {
+    if (!downloadFile) return;
     setDownloading(true);
-    try {
-      await descargarVideo(videoUrl);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'No pude descargar el video.';
-      setErrorMsg(msg);
-    } finally {
-      setDownloading(false);
+
+    const nav = navigator as Navigator & {
+      canShare?: (data: { files: File[] }) => boolean;
+      share?: (data: { files: File[]; title?: string }) => Promise<void>;
+    };
+
+    // No awaits between the click and nav.share — iOS requires the share call
+    // to happen inside the same task as the user gesture.
+    if (nav.canShare?.({ files: [downloadFile] }) && nav.share) {
+      nav
+        .share({ files: [downloadFile], title: 'Mi video de Campo' })
+        .catch(() => {
+          fallbackDownload(downloadFile);
+        })
+        .finally(() => setDownloading(false));
+      return;
     }
+
+    fallbackDownload(downloadFile);
+    setDownloading(false);
   };
 
   return (
@@ -107,7 +121,9 @@ export function VideoPage() {
               autoPlay
               muted
               playsInline
-              controls
+              disablePictureInPicture
+              disableRemotePlayback
+              controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
               onLoadedMetadata={(e) => {
                 e.currentTarget.currentTime = TRIM_START_SECONDS;
               }}
@@ -127,10 +143,10 @@ export function VideoPage() {
           </div>
           <Button
             onClick={handleDownload}
-            disabled={downloading}
+            disabled={!downloadFile || downloading}
             className="h-20 w-[90%] text-3xl [&_svg]:size-8 gap-4"
           >
-            {downloading ? (
+            {!downloadFile || downloading ? (
               <>
                 <Loader2 className="animate-spin" />
                 Preparando descarga…
