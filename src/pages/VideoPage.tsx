@@ -2,14 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { trimVideoStart } from '@/lib/trim';
-
-const BRAND_TEXT = 'Salgamos al campo con';
-const LOGO_SRC = '/logo-bna.png';
+import { processVideo, supportsVideoProcessing } from '@/lib/processVideo';
 
 // veo uses the uploaded selfie as the literal first frame — without trimming,
-// the MP4 visibly freezes before the animation starts. Match the preview skip.
+// the MP4 visibly freezes before the animation starts.
 const TRIM_START_SECONDS = 0.7;
+const WATERMARK_URL = '/watermark.png';
 
 function fallbackDownload(file: File) {
   const url = URL.createObjectURL(file);
@@ -23,12 +21,14 @@ function fallbackDownload(file: File) {
 }
 
 export function VideoPage() {
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // iOS Safari drops the user-gesture context across `await`, so we prepare
   // the File eagerly on mount — the click handler then calls navigator.share
   // synchronously and the share sheet actually opens.
   const [downloadFile, setDownloadFile] = useState<File | null>(null);
+  // Same blob as downloadFile, exposed as an object URL for the <video> preview
+  // so the user sees exactly what they're downloading (watermark burned in).
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const hasRunRef = useRef(false);
@@ -47,23 +47,30 @@ export function VideoPage() {
       setErrorMsg('No se especificó el video.');
       return;
     }
-    setVideoUrl(u);
 
     let cancelled = false;
+    let createdObjectUrl: string | null = null;
     (async () => {
       try {
         const resp = await fetch(u);
         if (!resp.ok) throw new Error(`No pude descargar el video (${resp.status}).`);
         const rawBlob = await resp.blob();
 
-        // Best-effort trim. ffmpeg.wasm can fail on mobile (OOM, unpkg blocked,
-        // weird non-Error throws from the FS layer) — if it does, fall back to
-        // the untrimmed MP4 so the download still works.
+        // Trim + burn-in watermark via mediabunny (WebCodecs). If the browser
+        // doesn't support WebCodecs, or if the pipeline fails on an edge-case
+        // device, fall back to the raw MP4 so the user still gets something.
         let finalBlob = rawBlob;
-        try {
-          finalBlob = await trimVideoStart(rawBlob, TRIM_START_SECONDS);
-        } catch (trimErr) {
-          console.warn('Trim failed, downloading untrimmed video:', trimErr);
+        if (supportsVideoProcessing()) {
+          try {
+            finalBlob = await processVideo(rawBlob, {
+              trimStartSeconds: TRIM_START_SECONDS,
+              watermarkUrl: WATERMARK_URL,
+            });
+          } catch (processErr) {
+            console.warn('Video processing failed, downloading raw MP4:', processErr);
+          }
+        } else {
+          console.warn('Browser lacks WebCodecs support — downloading raw MP4.');
         }
 
         if (cancelled) return;
@@ -71,6 +78,8 @@ export function VideoPage() {
         setDownloadFile(
           new File([finalBlob], filename, { type: finalBlob.type || 'video/mp4' }),
         );
+        createdObjectUrl = URL.createObjectURL(finalBlob);
+        setPreviewUrl(createdObjectUrl);
       } catch (err) {
         if (cancelled) return;
         console.error('Video prep failed:', err);
@@ -82,6 +91,7 @@ export function VideoPage() {
 
     return () => {
       cancelled = true;
+      if (createdObjectUrl) URL.revokeObjectURL(createdObjectUrl);
     };
   }, []);
 
@@ -122,23 +132,17 @@ export function VideoPage() {
       {!errorMsg && (
         <>
           <div className="relative aspect-[9/16] h-[80dvh] max-w-full overflow-hidden rounded-lg border bg-muted shadow-sm">
-            {videoUrl && (
+            {previewUrl && (
               <video
-                src={videoUrl}
+                src={previewUrl}
                 autoPlay
                 muted
                 playsInline
+                loop
                 disablePictureInPicture
                 disableRemotePlayback
                 controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
                 onLoadedData={() => setVideoLoaded(true)}
-                onLoadedMetadata={(e) => {
-                  e.currentTarget.currentTime = TRIM_START_SECONDS;
-                }}
-                onEnded={(e) => {
-                  e.currentTarget.currentTime = TRIM_START_SECONDS;
-                  void e.currentTarget.play();
-                }}
                 className={`h-full w-full object-cover transition-opacity duration-200 ${
                   videoLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
@@ -150,15 +154,6 @@ export function VideoPage() {
                   <Loader2 className="size-4 animate-spin" />
                   Cargando video...
                 </div>
-              </div>
-            )}
-            {/* Branding overlay (no se quema en el MP4 descargado). */}
-            {videoLoaded && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-gradient-to-t from-black/80 to-transparent px-4 pb-4 pt-12">
-                <span className="font-kievit-black text-base text-white drop-shadow-md sm:text-lg">
-                  {BRAND_TEXT}
-                </span>
-                <img src={LOGO_SRC} alt="BNA" className="h-7 w-auto sm:h-8" />
               </div>
             )}
           </div>
