@@ -30,6 +30,7 @@ export function VideoPage() {
   // synchronously and the share sheet actually opens.
   const [downloadFile, setDownloadFile] = useState<File | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [videoLoaded, setVideoLoaded] = useState(false);
   const hasRunRef = useRef(false);
 
   useEffect(() => {
@@ -54,13 +55,27 @@ export function VideoPage() {
         const resp = await fetch(u);
         if (!resp.ok) throw new Error(`No pude descargar el video (${resp.status}).`);
         const rawBlob = await resp.blob();
-        const trimmed = await trimVideoStart(rawBlob, TRIM_START_SECONDS);
+
+        // Best-effort trim. ffmpeg.wasm can fail on mobile (OOM, unpkg blocked,
+        // weird non-Error throws from the FS layer) — if it does, fall back to
+        // the untrimmed MP4 so the download still works.
+        let finalBlob = rawBlob;
+        try {
+          finalBlob = await trimVideoStart(rawBlob, TRIM_START_SECONDS);
+        } catch (trimErr) {
+          console.warn('Trim failed, downloading untrimmed video:', trimErr);
+        }
+
         if (cancelled) return;
         const filename = `bna-campo-argentina-${Date.now()}.mp4`;
-        setDownloadFile(new File([trimmed], filename, { type: trimmed.type || 'video/mp4' }));
+        setDownloadFile(
+          new File([finalBlob], filename, { type: finalBlob.type || 'video/mp4' }),
+        );
       } catch (err) {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : 'No pude preparar el video.';
+        console.error('Video prep failed:', err);
+        const msg =
+          err instanceof Error ? err.message : String(err) || 'No pude preparar el video.';
         setErrorMsg(msg);
       }
     })();
@@ -104,42 +119,48 @@ export function VideoPage() {
         </Alert>
       )}
 
-      {!errorMsg && !videoUrl && (
-        <div className="flex flex-1 items-center justify-center">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="size-5 animate-spin text-white" />
-            <p className="text-base text-white">Preparando tu video…</p>
-          </div>
-        </div>
-      )}
-
-      {videoUrl && (
+      {!errorMsg && (
         <>
-          <div className="relative max-h-[80dvh] w-auto max-w-full overflow-hidden rounded-lg border bg-muted shadow-sm">
-            <video
-              src={videoUrl}
-              autoPlay
-              muted
-              playsInline
-              disablePictureInPicture
-              disableRemotePlayback
-              controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
-              onLoadedMetadata={(e) => {
-                e.currentTarget.currentTime = TRIM_START_SECONDS;
-              }}
-              onEnded={(e) => {
-                e.currentTarget.currentTime = TRIM_START_SECONDS;
-                void e.currentTarget.play();
-              }}
-              className="max-h-[80dvh] w-auto max-w-full object-contain"
-            />
+          <div className="relative aspect-[9/16] h-[80dvh] max-w-full overflow-hidden rounded-lg border bg-muted shadow-sm">
+            {videoUrl && (
+              <video
+                src={videoUrl}
+                autoPlay
+                muted
+                playsInline
+                disablePictureInPicture
+                disableRemotePlayback
+                controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
+                onLoadedData={() => setVideoLoaded(true)}
+                onLoadedMetadata={(e) => {
+                  e.currentTarget.currentTime = TRIM_START_SECONDS;
+                }}
+                onEnded={(e) => {
+                  e.currentTarget.currentTime = TRIM_START_SECONDS;
+                  void e.currentTarget.play();
+                }}
+                className={`h-full w-full object-cover transition-opacity duration-200 ${
+                  videoLoaded ? 'opacity-100' : 'opacity-0'
+                }`}
+              />
+            )}
+            {!videoLoaded && (
+              <div className="absolute inset-0 flex animate-pulse items-center justify-center bg-muted">
+                <div className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-base font-medium text-primary-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Cargando video...
+                </div>
+              </div>
+            )}
             {/* Branding overlay (no se quema en el MP4 descargado). */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-gradient-to-t from-black/80 to-transparent px-4 pb-4 pt-12">
-              <span className="font-kievit-black text-base text-white drop-shadow-md sm:text-lg">
-                {BRAND_TEXT}
-              </span>
-              <img src={LOGO_SRC} alt="BNA" className="h-7 w-auto sm:h-8" />
-            </div>
+            {videoLoaded && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-gradient-to-t from-black/80 to-transparent px-4 pb-4 pt-12">
+                <span className="font-kievit-black text-base text-white drop-shadow-md sm:text-lg">
+                  {BRAND_TEXT}
+                </span>
+                <img src={LOGO_SRC} alt="BNA" className="h-7 w-auto sm:h-8" />
+              </div>
+            )}
           </div>
           <Button
             onClick={handleDownload}
