@@ -1,11 +1,11 @@
 import {
   Beef,
   Blocks,
+  Brush,
+  Camera,
   Clapperboard,
   Coffee,
-  Cookie,
   Dog,
-  Laugh,
   Milk,
   Mountain,
   Sprout,
@@ -98,26 +98,26 @@ interface EstiloOption extends Option {
 
 export const ESTILOS: EstiloOption[] = [
   {
+    id: 'realista',
+    label: 'Realista',
+    en: "photorealistic cinematic photograph — natural skin texture and realistic detail, true-to-life colors, soft natural daylight and a shallow depth of field like a high-quality DSLR portrait. Keep the person's real likeness exactly as in the reference photo; no stylization or cartoon effect. The entire scene (background and objects) is photorealistic and fills the full frame edge-to-edge — no empty white space, no vignette",
+    icon: Camera,
+  },
+  {
     id: 'pixar',
-    label: 'Animación 3D',
-    en: 'cinematic 3D animated style — smooth polished textures, big expressive eyes with bright catchlights, vibrant saturated colors, soft cinematic lighting and a playful polished look typical of modern family-friendly 3D animated features. The entire scene (background and objects) is rendered and animated in the same 3D animated style filling the full frame edge-to-edge — no empty white space, no vignette',
+    label: 'Pixar 3D',
+    en: "Disney Pixar 3D animated style — smooth polished textures, big expressive eyes with bright catchlights, vibrant saturated colors, soft cinematic lighting and a playful polished look reminiscent of modern Pixar/Disney films (Encanto, Luca, Coco, Turning Red). Keep the person's real likeness clearly recognizable: their actual eye color, eye shape, eyebrow shape, nose shape, mouth shape, hair color, hairstyle, skin tone, facial hair and any distinguishing marks must be preserved — do NOT replace the face with a generic Pixar character. The entire scene (background and objects) is rendered in the same Pixar 3D style filling the full frame edge-to-edge — no empty white space, no vignette",
     icon: Clapperboard,
   },
   {
-    id: 'caricatura3d',
-    label: 'Caricatura 3D',
-    en: 'semi-realistic 3D caricature look with strongly exaggerated proportions but realistic skin, hair and material detail — rendered like a high-end character bust with subsurface scattering, realistic pores and soft cinematic studio lighting. PROPORTIONS: the head is enormous and clearly dominates the frame — roughly the same size as the entire torso — sitting on a noticeably small, narrow body with small shoulders and short little arms. The eyes are big and wide-open with detailed irises and visible catchlights; the nose is large and prominent; the mouth is small and compact. The entire scene (background and objects) is rendered and animated in the same semi-realistic 3D caricature style filling the full frame edge-to-edge — no empty white space, no vignette',
-    icon: Laugh,
-  },
-  {
-    id: 'claymation',
-    label: 'Claymation 3D',
-    en: 'handcrafted 3D clay stop-motion style — everything sculpted out of modelling clay with visible fingerprints, tiny tool marks and slightly uneven matte clay surfaces, warm tabletop miniature-set lighting and the gentle stepped motion of stop-motion animation. The entire scene (background, characters and objects) is built and animated from clay in the same style filling the full frame edge-to-edge — no empty white space, no vignette',
-    icon: Cookie,
+    id: 'caricatura2d',
+    label: 'Caricatura 2D',
+    en: 'hand-drawn 2D caricature in the polished style of a professional caricature artist — exaggerated proportions with a noticeably oversized head and a small body, bold clean inked outlines around the face and hair, smooth hand-colored shading with subtle painted texture, detailed individual strands of hair, polished comic-style line work, recognizable real features brought out with slight playful exaggeration (eyes, smile, hair) while keeping the actual likeness of the reference photo. FRAMING: the character is positioned in the center of the canvas and occupies only the middle portion of the frame, with clear space all around them. BACKGROUND (MANDATORY): a fully drawn scene in the same caricature style covers 100% of the canvas — every pixel of the background, including above the head, beside the shoulders, below the body and in all four corners, must be drawn-in scene content; NO blank paper, NO white margins, NO empty space, NO vignette',
+    icon: Brush,
   },
   {
     id: 'lego',
-    label: 'LEGO',
+    label: 'Lego 3D',
     en: '3D toy brick world style — everything built from glossy plastic interlocking bricks and minifigure-style parts, including a blocky plastic minifigure with cylindrical head and clip hands. Bright saturated plastic colors, subtle plastic reflections and the slightly snappy movement of brick-built animation. The entire scene (background, vehicles, animals and objects) is constructed from plastic bricks in the same style filling the full frame edge-to-edge — no empty white space, no vignette',
     icon: Blocks,
   },

@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import Confetti from 'react-confetti';
 import Lottie from 'lottie-react';
-import { ArrowLeft, RotateCw, ThumbsUp } from 'lucide-react';
+import { ArrowLeft, Check, RotateCw, ThumbsUp } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { VideoError, generateVideo } from '@/lib/video';
-import { buildPrompt } from '@/lib/prompt';
+import { generateImage } from '@/lib/image';
+import { generateVideo } from '@/lib/video';
+import { buildImagePrompt, buildVideoPrompt } from '@/lib/prompt';
+import { cn } from '@/lib/utils';
 import type { Opciones } from '@/types';
 import loadingAnimation from '@/assets/tractor.json';
 
@@ -39,6 +41,7 @@ const STATUS_MESSAGES = [
 ];
 
 type Phase = 'generating' | 'done' | 'error';
+type Step = 'image' | 'video';
 
 interface GeneratePageProps {
   apiKey: string;
@@ -50,6 +53,8 @@ interface GeneratePageProps {
 
 export function GeneratePage({ apiKey, photo, opciones, onBack, onDone }: GeneratePageProps) {
   const [phase, setPhase] = useState<Phase>('generating');
+  const [step, setStep] = useState<Step>('image');
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -60,14 +65,29 @@ export function GeneratePage({ apiKey, photo, opciones, onBack, onDone }: Genera
 
   const run = async () => {
     setPhase('generating');
+    setStep('image');
+    setGeneratedImageUrl(null);
     setErrorMsg(null);
     setPublicUrl(null);
     try {
-      const { prompt } = buildPrompt(opciones);
+      // Paso 1 — generar la imagen estilizada (preserva identidad).
+      const imagePrompt = buildImagePrompt(opciones);
+      const image = await generateImage({
+        apiKey,
+        prompt: imagePrompt.prompt,
+        inputImageBase64: photo.base64,
+        extraReferenceUrl: imagePrompt.extraReferenceUrl,
+      });
+      // Reemplaza el fondo borroso (selfie → imagen estilizada).
+      setGeneratedImageUrl(`data:image/jpeg;base64,${image.base64}`);
+      setStep('video');
+
+      // Paso 2 — animar esa imagen.
+      const { prompt } = buildVideoPrompt(opciones);
       const { blob, url: falUrl } = await generateVideo({
         apiKey,
         prompt,
-        inputImageBase64: photo.base64,
+        inputImageBase64: image.base64,
       });
       if (currentResultRef.current) URL.revokeObjectURL(currentResultRef.current);
       const objectUrl = URL.createObjectURL(blob);
@@ -77,11 +97,7 @@ export function GeneratePage({ apiKey, photo, opciones, onBack, onDone }: Genera
       setPhase('done');
     } catch (err) {
       const msg =
-        err instanceof VideoError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Error desconocido';
+        err instanceof Error ? err.message : 'Error desconocido';
       setErrorMsg(msg);
       setPhase('error');
     }
@@ -140,15 +156,23 @@ export function GeneratePage({ apiKey, photo, opciones, onBack, onDone }: Genera
           className="pointer-events-none fixed inset-0 z-50"
         />
       )}
-      <header className="relative flex items-center justify-center">
+      <header className="relative flex flex-col items-center justify-center gap-3">
         {phase === 'error' && (
-          <Button variant="ghost" size="sm" onClick={onBack} className="absolute left-0">
+          <Button variant="ghost" size="sm" onClick={onBack} className="absolute left-0 top-0">
             <ArrowLeft className="size-4" /> Volver
           </Button>
         )}
-        <h2 className="whitespace-nowrap text-center text-3xl font-kievit-black tracking-wide text-white drop-shadow-md">
-          {phase === 'generating' ? 'Generando Video' : 'Resultado'}
-        </h2>
+        {phase === 'generating' ? (
+          <div className="flex items-center justify-center gap-3">
+            <StepPill label="Generando imagen" active={step === 'image'} done={step === 'video'} />
+            <div className="h-1 w-8 rounded-full bg-white/40" />
+            <StepPill label="Generando video" active={step === 'video'} done={false} />
+          </div>
+        ) : (
+          <h2 className="whitespace-nowrap text-center text-3xl font-kievit-black tracking-wide text-white drop-shadow-md">
+            Resultado
+          </h2>
+        )}
       </header>
 
       <div className="flex flex-1 min-h-0 items-center justify-center">
@@ -156,7 +180,7 @@ export function GeneratePage({ apiKey, photo, opciones, onBack, onDone }: Genera
           {phase === 'generating' && (
             <>
               <img
-                src={photo.dataUrl}
+                src={generatedImageUrl ?? photo.dataUrl}
                 alt=""
                 aria-hidden
                 className="h-full w-full scale-110 object-cover blur-2xl"
@@ -254,6 +278,39 @@ export function GeneratePage({ apiKey, photo, opciones, onBack, onDone }: Genera
           <RotateCw /> Reintentar
         </Button>
       )}
+    </div>
+  );
+}
+
+interface StepPillProps {
+  label: string;
+  active: boolean;
+  done: boolean;
+}
+
+function StepPill({ label, active, done }: StepPillProps) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 rounded-full px-5 py-2 text-xl font-kievit-black tracking-wide shadow-md transition-colors',
+        done
+          ? 'bg-primary text-white'
+          : active
+            ? 'bg-white text-primary'
+            : 'bg-white/30 text-white/70'
+      )}
+    >
+      {done ? (
+        <Check className="size-5" />
+      ) : (
+        <span
+          className={cn(
+            'size-3 rounded-full',
+            active ? 'animate-pulse bg-primary' : 'bg-white/50'
+          )}
+        />
+      )}
+      {label}
     </div>
   );
 }

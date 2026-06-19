@@ -1,16 +1,17 @@
-// Cliente para fal.ai (veo 3.1 lite / image-to-video).
+// Cliente para fal.ai (pixverse v4.5 / image-to-video).
 //
-// Toma `prompt` + una sola `image_url` (la selfie) y la anima en un clip de
-// 4 segundos SIN audio. veo usa la imagen como primer cuadro y preserva la
-// cara (no la re-estiliza): el estilo 3D del prompt afecta sobre todo escena,
-// ambiente y movimiento.
+// Segundo paso del flujo: toma `prompt` + una sola `image_url` (la imagen YA
+// estilizada por nano-banana) y la anima en un clip de 5 segundos SIN audio.
+// pixverse usa la imagen como primer cuadro; el estilo y la escena ya vienen
+// resueltos en la imagen, así que el prompt solo describe el movimiento. El
+// aspect ratio (9:16) sale de la propia imagen.
 
-const SUBMIT_URL = 'https://queue.fal.run/fal-ai/veo3.1/lite/image-to-video';
+const SUBMIT_URL = 'https://queue.fal.run/fal-ai/pixverse/v4.5/image-to-video';
 
 const POLL_INTERVAL_MS = 3000;
-const POLL_TIMEOUT_MS = 360_000; // veo tarda bastante más que un modelo de imagen
+const POLL_TIMEOUT_MS = 360_000; // el video tarda bastante más que un modelo de imagen
 
-export const VIDEO_MODEL = 'fal-ai/veo3.1/lite/image-to-video';
+export const VIDEO_MODEL = 'fal-ai/pixverse/v4.5/image-to-video';
 
 export class VideoError extends Error {
   constructor(
@@ -53,7 +54,7 @@ interface ResultResponse {
 interface GenerateArgs {
   apiKey: string;
   prompt: string;
-  /** Base64-encoded JPEG/PNG, no `data:` prefix. */
+  /** Base64-encoded JPEG/PNG, no `data:` prefix. La imagen YA estilizada. */
   inputImageBase64: string;
   signal?: AbortSignal;
 }
@@ -107,17 +108,12 @@ async function generateVideoOnce({
     body: JSON.stringify({
       prompt,
       image_url,
-      duration: '4s',
+      // pixverse v4.5 image-to-video: duración mínima 5s; el aspect ratio (9:16)
+      // sale de la imagen, no es un parámetro. No genera audio.
+      duration: '5',
       resolution: '720p',
-      aspect_ratio: '9:16',
-      generate_audio: false,
       negative_prompt:
         'extra fingers, warped hands, flickering, watermark, text',
-      // Loosen Veo's safety filter and let fal auto-rewrite borderline
-      // prompts. Together these cut the 422 content_policy_violation rate
-      // dramatically without changing what we actually render.
-      safety_tolerance: '6',
-      auto_fix: true,
     }),
     signal,
   });
